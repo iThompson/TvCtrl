@@ -6,7 +6,7 @@ class SerialController :
     public ITVController
 {
 public:
-    SerialController(const char* portName);
+    SerialController(const TCHAR* portName);
     ~SerialController(void);
 
     int open();
@@ -28,7 +28,7 @@ public:
 
 private:
     HANDLE m_hSerial;
-    char m_portName[10];
+    TCHAR m_portName[10];
     char m_buf[10]; // 9 bytes of data and 1 null
 
     int setCommand(char* cmd);

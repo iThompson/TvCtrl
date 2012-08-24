@@ -1,10 +1,10 @@
 #include "StdAfx.h"
 #include "SerialController.h"
 
-SerialController::SerialController(const char* portName) : m_hSerial(INVALID_HANDLE_VALUE)
+SerialController::SerialController(const TCHAR* portName) : m_hSerial(INVALID_HANDLE_VALUE)
 {
-    strcpy_s(m_portName, sizeof(m_portName), portName);
-    memset(buf, 0, sizeof(buf));
+    StringCbCopy(m_portName, sizeof(m_portName), portName);
+    memset(m_buf, 0, sizeof(m_buf));
 }
 
 SerialController::~SerialController(void)
@@ -166,9 +166,9 @@ int SerialController::remoteCode(int code)
 int SerialController::setCommand(char* cmd)
 {
     if (cmd[4] != 0) return -1;
-    memcpy(buf, cmd, 4);
+    memcpy(m_buf, cmd, 4);
     // Clear parameters
-    memset(buf+4, 0, 4);
+    memset(m_buf+4, 0, 4);
     return 0;
 }
 
@@ -176,17 +176,18 @@ int SerialController::setCommand(char* cmd)
 int SerialController::setParam(UINT8 param, char val)
 {
     if (param > 3) return -1;
-    buf[param+4] = val; // Parameters start on the 5th byte
+    m_buf[param+4] = val; // Parameters start on the 5th byte
+    return 0;
 }
 
 // Implementation of writeCommand
 int SerialController::writeCommand()
 {
     DWORD numWritten = 0;
-    buf[9] = 0x0D; // Always end with a CR
+    m_buf[9] = 0x0D; // Always end with a CR
 
     if (m_hSerial == INVALID_HANDLE_VALUE) return -1; // Not initialized
-    WriteFile(m_hSerial, buf, 9, &numWritten, NULL);
+    WriteFile(m_hSerial, m_buf, 9, &numWritten, NULL);
     if (numWritten != 9) return -1; // IO Error
     return checkOK(); // TODO: proper return codes
 }
@@ -194,6 +195,17 @@ int SerialController::writeCommand()
 // Implementation of checkOK
 int SerialController::checkOK()
 {
-    return -1;
+    char reply[10]; // Expected reply is only 3 bytes, but let's be safe
+    DWORD numRead = 0;
+    if (m_hSerial == INVALID_HANDLE_VALUE) return -1; // Not initialized
+
+    ReadFile(m_hSerial, reply, 10, &numRead, NULL);
+    if (numRead != 3) return -1; // Invalid reply
+    reply[3] = 0;
+
+    // Check that the reply is correct
+    if (strcmp(reply, "OK\x0D") != 0) return -1; // Invalid reply
+
+    return 0; // Success
 }
 
