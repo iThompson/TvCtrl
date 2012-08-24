@@ -1,7 +1,7 @@
 #include "StdAfx.h"
 #include "SerialController.h"
 
-SerialController::SerialController(const char* portName) : m_hSerial(NULL)
+SerialController::SerialController(const char* portName) : m_hSerial(INVALID_HANDLE_VALUE)
 {
     strcpy_s(m_portName, sizeof(m_portName), portName);
     memset(buf, 0, sizeof(buf));
@@ -9,22 +9,73 @@ SerialController::SerialController(const char* portName) : m_hSerial(NULL)
 
 SerialController::~SerialController(void)
 {
-    if (m_hSerial != NULL) close();
+    if (m_hSerial != INVALID_HANDLE_VALUE) close();
 }
 
 int SerialController::open(void)
 {
-    // TODO: Open Port
-    // TODO: Configure timeouts
-    return -1;
+    DCB dcbSerial;
+    COMMTIMEOUTS timeouts;
+    memset(&dcbSerial, 0, sizeof(dcbSerial));
+    memset(&timeouts, 0, sizeof(timeouts));
+
+    if (m_hSerial != INVALID_HANDLE_VALUE) return -1; // Already open
+
+    m_hSerial = CreateFile(m_portName,
+                           GENERIC_READ | GENERIC_WRITE,
+                           0,
+                           0,
+                           OPEN_EXISTING,
+                           FILE_ATTRIBUTE_NORMAL,
+                           0);
+
+    if (m_hSerial==INVALID_HANDLE_VALUE) {
+        if (GetLastError()==ERROR_FILE_NOT_FOUND){
+            return -1; // Invalid port
+        }
+        return -1; // Unknown I/O error
+    }
+
+    dcbSerial.DCBlength = sizeof(dcbSerial);
+
+    if (!GetCommState(m_hSerial, &dcbSerial)) {
+        CloseHandle(m_hSerial);
+        m_hSerial = INVALID_HANDLE_VALUE;
+        return -1; // Unknown I/O error
+    }
+
+    dcbSerial.BaudRate = CBR_9600;
+    dcbSerial.ByteSize = 8;
+    dcbSerial.StopBits = ONESTOPBIT;
+    dcbSerial.Parity = NOPARITY;
+
+    if (!GetCommState(m_hSerial, &dcbSerial)) {
+        CloseHandle(m_hSerial);
+        m_hSerial = INVALID_HANDLE_VALUE;
+        return -1; // Serial config error
+    }
+
+    timeouts.ReadIntervalTimeout=50;
+    timeouts.ReadTotalTimeoutConstant=50;
+    timeouts.ReadTotalTimeoutMultiplier=10;
+    timeouts.WriteTotalTimeoutConstant=50;
+    timeouts.WriteTotalTimeoutMultiplier=10;
+
+    if (!SetCommTimeouts(m_hSerial, &timeouts)) {
+        CloseHandle(m_hSerial);
+        m_hSerial = INVALID_HANDLE_VALUE;
+        return -1; // Timeout config error
+    }
+
+    return 0;
 }
 
 void SerialController::close(void)
 {
-    if (m_hSerial != NULL)
+    if (m_hSerial != INVALID_HANDLE_VALUE)
     {
         CloseHandle(m_hSerial);
-        m_hSerial = NULL;
+        m_hSerial = INVALID_HANDLE_VALUE;
     }
 }
 
@@ -134,8 +185,9 @@ int SerialController::writeCommand()
     DWORD numWritten = 0;
     buf[9] = 0x0D; // Always end with a CR
 
+    if (m_hSerial == INVALID_HANDLE_VALUE) return -1; // Not initialized
     WriteFile(m_hSerial, buf, 9, &numWritten, NULL);
-    if (numWritten != 9) return -1 // IO Error
+    if (numWritten != 9) return -1; // IO Error
     return checkOK(); // TODO: proper return codes
 }
 
